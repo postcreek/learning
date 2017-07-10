@@ -41,6 +41,14 @@
       "metadata": {
         "description": "Location of the Logic App."
       }
+    },
+    "onedrive_1_Connection_Name": {
+      "type": "string",
+      "defaultValue": "onedrive-1"
+    },
+    "onedrive_1_Connection_DisplayName": {
+      "type": "string",
+      "defaultValue": "postcreek@outlook.com"
     }
   },
   "variables": {},
@@ -64,9 +72,39 @@
                 "uri": "https://poloniex.com/public?command=returnLoanOrders&currency=BTC"
               },
               "runAfter": {}
+            },
+            "Create_file": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "api": {
+                    "runtimeUrl": "https://logic-apis-westus.azure-apim.net/apim/onedrive"
+                  },
+                  "connection": {
+                    "name": "@parameters('$connections')['onedrive']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/datasets/default/files",
+                "queries": {
+                  "folderPath": "/learning/AzureAppServices/polo",
+                  "name": "test.txt"
+                },
+                "body": "@body('HTTP')"
+              },
+              "runAfter": {
+                "HTTP": [
+                  "Succeeded"
+                ]
+              }
             }
           },
-          "parameters": {},
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            }
+          },
           "triggers": {
             "Recurrence": {
               "type": "Recurrence",
@@ -79,7 +117,32 @@
           "contentVersion": "1.0.0.0",
           "outputs": {}
         },
-        "parameters": {}
+        "parameters": {
+          "$connections": {
+            "value": {
+              "onedrive": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'onedrive')]",
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('onedrive_1_Connection_Name'))]",
+                "connectionName": "[parameters('onedrive_1_Connection_Name')]"
+              }
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', parameters('onedrive_1_Connection_Name'))]"
+      ]
+    },
+    {
+      "type": "MICROSOFT.WEB/CONNECTIONS",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('onedrive_1_Connection_Name')]",
+      "location": "[parameters('logicAppLocation')]",
+      "properties": {
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'onedrive')]"
+        },
+        "displayName": "[parameters('onedrive_1_Connection_DisplayName')]"
       }
     }
   ],
