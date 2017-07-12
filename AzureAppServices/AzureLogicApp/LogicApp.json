@@ -49,6 +49,61 @@
     "onedrive_1_Connection_DisplayName": {
       "type": "string",
       "defaultValue": "postcreek@outlook.com"
+    },
+    "sql_1_Connection_Name": {
+      "type": "string",
+      "defaultValue": "sql"
+    },
+    "sql_1_Connection_DisplayName": {
+      "type": "string",
+      "defaultValue": "postcreek.datacollection"
+    },
+    "sql_1_server": {
+      "type": "string",
+      "metadata": {
+        "description": "SQL server name"
+      },
+      "defaultValue": "postcreek.database.windows.net"
+    },
+    "sql_1_database": {
+      "type": "string",
+      "metadata": {
+        "description": "SQL database name"
+      },
+      "defaultValue": "DataCollection"
+    },
+    "sql_1_username": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Username credential"
+      }
+    },
+    "sql_1_password": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Password credential"
+      }
+    },
+    "azureblob_1_Connection_Name": {
+      "type": "string",
+      "defaultValue": "azureblob"
+    },
+    "azureblob_1_Connection_DisplayName": {
+      "type": "string",
+      "defaultValue": "postcreek"
+    },
+    "azureblob_1_accountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the storage account the connector should use."
+      },
+      "defaultValue": "postcreek"
+    },
+    "azureblob_1_accessKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Specify a valid primary/secondary storage account access key."
+      }
     }
   },
   "variables": {},
@@ -65,35 +120,86 @@
         "definition": {
           "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
           "actions": {
-            "HTTP": {
-              "type": "Http",
-              "inputs": {
-                "method": "GET",
-                "uri": "https://poloniex.com/public?command=returnLoanOrders&currency=BTC"
-              },
-              "runAfter": {}
-            },
-            "Create_file": {
+            "Get_URLs": {
               "type": "ApiConnection",
               "inputs": {
                 "host": {
                   "api": {
-                    "runtimeUrl": "https://logic-apis-westus.azure-apim.net/apim/onedrive"
+                    "runtimeUrl": "https://logic-apis-westus2.azure-apim.net/apim/sql"
                   },
                   "connection": {
-                    "name": "@parameters('$connections')['onedrive']['connectionId']"
+                    "name": "@parameters('$connections')['sql']['connectionId']"
                   }
                 },
-                "method": "post",
-                "path": "/datasets/default/files",
-                "queries": {
-                  "folderPath": "/learning/AzureAppServices/polo",
-                  "name": "test.txt"
+                "method": "get",
+                "path": "/datasets/default/tables/@{encodeURIComponent(encodeURIComponent('v_ActiveRequestUrls'))}/items"
+              },
+              "runAfter": {}
+            },
+            "For_each_URL": {
+              "type": "Foreach",
+              "foreach": "@body('Get_URLs')?['value']",
+              "actions": {
+                "Send_Request": {
+                  "type": "Http",
+                  "inputs": {
+                    "method": "@{item()?['Method']}",
+                    "uri": "@{item()?['Url']}"
+                  },
+                  "runAfter": {}
                 },
-                "body": "@body('HTTP')"
+                "Save_Respose_Body": {
+                  "type": "ApiConnection",
+                  "inputs": {
+                    "host": {
+                      "api": {
+                        "runtimeUrl": "https://logic-apis-westus2.azure-apim.net/apim/azureblob"
+                      },
+                      "connection": {
+                        "name": "@parameters('$connections')['azureblob']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/datasets/default/files",
+                    "queries": {
+                      "folderPath": "/datacollection",
+                      "name": "@{item()?['FileName']}_@{body('Log_Response')?['ReturnCode']}.@{item()?['FileExtension']}"
+                    },
+                    "body": "@body('Send_Request')"
+                  },
+                  "runAfter": {
+                    "Log_Response": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Log_Response": {
+                  "type": "ApiConnection",
+                  "inputs": {
+                    "host": {
+                      "api": {
+                        "runtimeUrl": "https://logic-apis-westus2.azure-apim.net/apim/sql"
+                      },
+                      "connection": {
+                        "name": "@parameters('$connections')['sql']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/datasets/default/procedures/@{encodeURIComponent(encodeURIComponent('[dbo].[p_LogResponse]'))}",
+                    "body": {
+                      "RequestUrlId": "@item()?['RequestUrlId']",
+                      "StatusCode": "@outputs('Send_Request')['statusCode']"
+                    }
+                  },
+                  "runAfter": {
+                    "Send_Request": [
+                      "Succeeded"
+                    ]
+                  }
+                }
               },
               "runAfter": {
-                "HTTP": [
+                "Get_URLs": [
                   "Succeeded"
                 ]
               }
@@ -120,17 +226,23 @@
         "parameters": {
           "$connections": {
             "value": {
-              "onedrive": {
-                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'onedrive')]",
-                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('onedrive_1_Connection_Name'))]",
-                "connectionName": "[parameters('onedrive_1_Connection_Name')]"
+              "sql": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'sql')]",
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('sql_1_Connection_Name'))]",
+                "connectionName": "[parameters('sql_1_Connection_Name')]"
+              },
+              "azureblob": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'azureblob')]",
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('azureblob_1_Connection_Name'))]",
+                "connectionName": "[parameters('azureblob_1_Connection_Name')]"
               }
             }
           }
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/connections', parameters('onedrive_1_Connection_Name'))]"
+        "[resourceId('Microsoft.Web/connections', parameters('sql_1_Connection_Name'))]",
+        "[resourceId('Microsoft.Web/connections', parameters('azureblob_1_Connection_Name'))]"
       ]
     },
     {
@@ -143,6 +255,40 @@
           "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'onedrive')]"
         },
         "displayName": "[parameters('onedrive_1_Connection_DisplayName')]"
+      }
+    },
+    {
+      "type": "MICROSOFT.WEB/CONNECTIONS",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('sql_1_Connection_Name')]",
+      "location": "[parameters('logicAppLocation')]",
+      "properties": {
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'sql')]"
+        },
+        "displayName": "[parameters('sql_1_Connection_DisplayName')]",
+        "parameterValues": {
+          "server": "[parameters('sql_1_server')]",
+          "database": "[parameters('sql_1_database')]",
+          "username": "[parameters('sql_1_username')]",
+          "password": "[parameters('sql_1_password')]"
+        }
+      }
+    },
+    {
+      "type": "MICROSOFT.WEB/CONNECTIONS",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('azureblob_1_Connection_Name')]",
+      "location": "[parameters('logicAppLocation')]",
+      "properties": {
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('logicAppLocation'), '/managedApis/', 'azureblob')]"
+        },
+        "displayName": "[parameters('azureblob_1_Connection_DisplayName')]",
+        "parameterValues": {
+          "accountName": "[parameters('azureblob_1_accountName')]",
+          "accessKey": "[parameters('azureblob_1_accessKey')]"
+        }
       }
     }
   ],
