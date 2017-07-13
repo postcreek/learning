@@ -4,15 +4,6 @@
   "parameters": {
     "logicAppName": {
       "value": "PoloLogicApp"
-    },
-    "sql_1_username": {
-      "value": "john.cote"
-    },
-    "sql_1_password": {
-      "value": "sql.EDCrfv123"
-    },
-    "azureblob_1_accessKey": {
-      "value": "g/8/bUzujpvgIF1gxZuOeogrJBY9XoW0tDKsaSGo7aOsT/89oez1gybUvcKS5RwyF7zOn7nLL8FDYcCXCwL7dg=="
     }
   }
 }
